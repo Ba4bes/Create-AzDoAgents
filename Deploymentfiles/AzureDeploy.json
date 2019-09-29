@@ -1,0 +1,269 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "virtualNetworkPrefix": {
+            "type": "string"
+        },
+        "subnetAddressPrefix": {
+            "type": "string"
+        },
+        "dnsServer": {
+            "type": "array"
+        },
+        "virtualMachineSize": {
+            "type": "string"
+        },
+        "adminUsername": {
+            "type": "string"
+        },
+        "adminPassword": {
+            "type": "securestring"
+        },
+        "resourcePrefix": {
+            "type": "string",
+            "maxLength": 13
+        },
+        "agentCount": {
+            "type": "int"
+        },
+        "Serverversion": {
+            "type": "string",
+            "allowedValues": [
+                "2016",
+                "2019"
+            ],
+            "defaultValue": "2019"
+        },
+        "storageAccountName": {
+            "type": "string",
+            "defaultValue": "p4362546ssar"
+        },
+        "location": {
+            "type": "string",
+            "defaultValue": "[resourceGroup().location]",
+            "metadata": {
+                "description": "Location for all resources."
+            }
+        }
+    },
+    "variables": {
+        "networkInterface": "[concat( parameters('resourcePrefix'), '-NIC')]",
+        "publicIP": "[concat( parameters('resourcePrefix'), '-PIP')]",
+        "nsgName": "[concat( parameters('resourcePrefix'), '-NSG')]",
+        "vNetName": "[concat( parameters('resourcePrefix'), '-vnet')]",
+        "subnetName": "[concat( parameters('resourcePrefix'), '-subnet')]",
+        "networkResourceId": "[resourceId('Microsoft.Network/virtualNetworks', variables('vNetName'))]",
+        "subnetRef": "[concat( variables('networkResourceId') , '/subnets/', variables('subnetName'))]",
+        "storageAccountName": "[toLower(parameters('storageAccountName'))]"
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Storage/storageAccounts",
+            "apiVersion": "2015-06-15",
+            "name": "[variables('storageAccountName')]",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "displayName": "[variables('storageAccountName')]",
+                "ARMcreated": "True"
+            },
+            "properties": {
+                "accountType": "Standard_LRS"
+            }
+        },
+        {
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "name": "[variables('nsgName')]",
+            "apiVersion": "2018-12-01",
+            "location": "[parameters('location')]",
+            "scale": null,
+            "properties": {
+                "securityRules": [
+                    {
+                        "name": "Allow443",
+                        "properties": {
+                            "protocol": "*",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "443",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 100,
+                            "direction": "Inbound"
+                        }
+                    }
+                ]
+            },
+            "tags": {
+                "Armdeployed": "true",
+                "Repository": "OneClick",
+                "AutoDelete": "true"
+            },
+            "dependsOn": []
+        },
+        {
+            "apiVersion": "2018-08-01",
+            "name": "[variables('vNetName')]",
+            "type": "Microsoft.Network/virtualNetworks",
+            "location": "[parameters('location')]",
+            "dependsOn": [
+                "[ResourceID('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]"
+            ],
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "[parameters('virtualNetworkPrefix')]"
+                    ]
+                },
+                "dhcpOptions": {
+                    "dnsServers": "[parameters('dnsServer')]"
+                },
+                "subnets": [
+                    {
+                        "name": "[variables('subnetName')]",
+                        "properties": {
+                            "addressPrefix": "[parameters('subnetAddressPrefix')]",
+                            "networkSecurityGroup": {
+                                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName') )]"
+                            },
+                            "serviceEndpoints": []
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "name": "[concat(variables('networkInterface'), copyIndex())]",
+            "type": "Microsoft.Network/networkInterfaces",
+            "apiVersion": "2018-10-01",
+            "location": "[parameters('location')]",
+            "dependsOn": [
+                "[resourceID('Microsoft.Network/publicIpAddresses', concat(variables('publicIP'), copyIndex()))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('vNetName')) ]"
+            ],
+            "copy": {
+                "name": "nic-loop",
+                "count": "[parameters( 'agentCount')]"
+            },
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "ipconfig1",
+                        "properties": {
+                            "subnet": {
+                                "id": "[variables('subnetRef')]"
+                            },
+                            "privateIPAllocationMethod": "Dynamic",
+                            "publicIpAddress": {
+                                "id": "[resourceID('Microsoft.Network/publicIpAddresses', concat(variables('publicIP'), copyIndex()))]"
+                            }
+                        }
+                    }
+                ]
+            },
+            "tags": {
+                "Armdeployed": "true",
+                "Repository": "OneClick",
+                "AutoDelete": "true"
+            }
+        },
+        {
+            "name": "[concat(variables('publicIP'), copyIndex())]",
+            "type": "Microsoft.Network/publicIPAddresses",
+            "apiVersion": "2018-08-01",
+            "location": "[parameters('location')]",
+            "copy": {
+                "name": "pip-loop",
+                "count": "[parameters( 'agentCount')]"
+            },
+            "properties": {
+                "publicIPAllocationMethod": "Dynamic"
+            },
+            "sku": {
+                "name": "Basic"
+            },
+            "tags": {
+                "Armdeployed": "true",
+                "Repository": "OneClick",
+                "AutoDelete": "true"
+            }
+        },
+        {
+            "name": "[concat(parameters('resourcePrefix'), copyIndex())]",
+            "type": "Microsoft.Compute/virtualMachines",
+            "apiVersion": "2018-06-01",
+            "location": "[parameters('location')]",
+            "copy": {
+                "name": "vm-loop",
+                "count": "[parameters( 'agentCount')]"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkInterfaces', concat(variables('networkInterface'), copyIndex()))]"
+            ],
+            "properties": {
+                "hardwareProfile": {
+                    "vmSize": "[parameters('virtualMachineSize')]"
+                },
+                "storageProfile": {
+                    "osDisk": {
+                        "createOption": "FromImage",
+                        "managedDisk": {
+                            "storageAccountType": "Standard_LRS"
+                        }
+                    },
+                    "imageReference": {
+                        "publisher": "MicrosoftWindowsServer",
+                        "offer": "WindowsServer",
+                        "sku": "[if(equals(parameters('Serverversion'), '2016'), '2016-Datacenter', '2019-Datacenter')]",
+                        "version": "latest"
+                    }
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces', concat(variables('networkInterface'), copyIndex()))]"
+                        }
+                    ]
+                },
+                "osProfile": {
+                    "computerName": "[concat(parameters('resourcePrefix'), copyIndex())]",
+                    "adminUsername": "[parameters('adminUsername')]",
+                    "adminPassword": "[parameters('adminPassword')]",
+                    "windowsConfiguration": {
+                        "enableAutomaticUpdates": true,
+                        "provisionVmAgent": true
+                    }
+                }
+            },
+            "tags": {
+                "Armdeployed": "true",
+                "Repository": "OneClick",
+                "AutoDelete": "true"
+            }
+        },
+        {
+            "name": "[concat('shutdown-computevm-', parameters('resourcePrefix'), copyIndex())]",
+            "type": "Microsoft.DevTestLab/schedules",
+            "apiVersion": "2017-04-26-preview",
+            "location": "[parameters('location')]",
+            "copy": {
+                "name": "vm-shutdown-loop",
+                "count": "[parameters( 'agentCount')]"
+            },
+            "dependsOn": [
+                "[concat('Microsoft.Compute/virtualMachines/', parameters('resourcePrefix'), copyIndex())]"
+            ],
+            "properties": {
+                "status": "Enabled",
+                "taskType": "ComputeVmShutdownTask",
+                "dailyRecurrence": {
+                    "time": "19:00"
+                },
+                "timeZoneId": "W. Europe Standard Time",
+                "targetResourceId": "[resourceId('Microsoft.Compute/virtualMachines', concat(parameters('resourcePrefix'), copyIndex()))]"
+            },
+            "tags": {}
+        }
+    ],
+    "outputs": {}
+}

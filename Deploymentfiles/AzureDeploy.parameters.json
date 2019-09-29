@@ -1,0 +1,35 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "virtualNetworkPrefix": {
+            "value": "10.24.0.0/16"
+        },
+        "subnetAddressPrefix": {
+            "value": "10.24.0.0/24"
+        },
+        "dnsServer": {
+            "value": [
+                "8.8.8.8"
+            ]
+        },
+        "virtualMachineSize": {
+            "value": "Standard_B2ms"
+        },
+        "adminUsername": {
+            "value": "agentadmin"
+        },
+        "adminPassword": {
+            "value": "Welkom123456"
+        },
+        "resourcePrefix": {
+            "value": "Agent-"
+        },
+        "agentCount": {
+            "value": 1
+        },
+        "Serverversion": {
+            "value": "2019"
+        }
+    }
+}

@@ -1,0 +1,85 @@
+name: Deploy Azure DevOps Agent
+variables:
+  azureConnectionName: 'azureConnection'
+  resourceGroupName : 'AgentsResourceGroup'
+  organizationName : 'MyOrganization'
+  pool: 'AgentPool01'
+  agentCount: 2
+  storageAccount: 'uniquestorageaccountname' #This needs to be globally unique
+  agentFileName: 'vsts-agent-win-x64-2.155.1' #Change this if a new version is available. This should be the same name as the file in Installationfiles
+  adminUsername: 'AgentAdmin'
+
+trigger:
+  branches:
+    include:
+    - 'master'
+
+
+stages:
+
+- stage: Build
+  jobs:
+  - job: BuildJob
+    pool:
+      vmImage: windows-2019
+    steps:
+    - task: AzureResourceGroupDeployment@2
+      displayName: 'Azure Deployment: Test deployment'
+      inputs:
+        azureSubscription:  $(azureConnectionName)
+        resourceGroupName: $(resourceGroupName)
+        location: 'West Europe'
+        csmFile: 'Deploymentfiles/Azuredeploy.json'
+        csmParametersFile: 'Deploymentfiles/Azuredeploy.parameters.json'
+        deploymentMode: Validation
+
+- stage: Deploy
+  condition:
+       and(
+         succeeded(),
+         eq(variables['Build.SourceBranch'], 'refs/heads/master')
+         )
+  jobs:
+  - job: deployment
+    pool:
+      vmImage: windows-2019
+    steps:
+    - task: AzureResourceGroupDeployment@2
+      displayName: Delete existing ResourceGroup
+      inputs:
+        azureSubscription: '$(AzureConnectionName)'
+        action: 'Delete'
+        resourceGroupName: '$(resourceGroupName)'
+    - task: AzureResourceGroupDeployment@2
+      displayName: Create new Azure Resources
+      inputs:
+        azureSubscription: '$(AzureConnectionName)'
+        action: 'Create Or Update Resource Group'
+        resourceGroupName: '$(resourceGroupName)'
+        location: 'West Europe'
+        templateLocation: 'Linked artifact'
+        csmFile: 'Deploymentfiles/AzureDeploy.json'
+        csmParametersFile: 'Deploymentfiles/AzureDeploy.parameters.json'
+        overrideParameters: '-adminUsername $(adminUsername) -adminPassword $(Password) -storageAccountName $(storageAccount) -agentCount $(agentCount)'
+        deploymentMode: 'Complete'
+        enableDeploymentPrerequisites: 'ConfigureVMwithWinRM'
+    - task: AzureFileCopy@3
+      displayName: 'Copy installation files'
+      inputs:
+        SourcePath: '$(Build.SourcesDirectory)/installationfiles'
+        azureSubscription: '$(AzureConnectionName)'
+        Destination: 'AzureVMs'
+        storage: '$(storageAccount)'
+        resourceGroup: '$(resourceGroupName)'
+        vmsadminUsername: '$(adminUsername)'
+        vmsAdminPassword: '$(Password)'
+        TargetPath: 'C:\temp'
+
+    - task: AzurePowerShell@4
+      displayName: 'deploy custom script extension'
+      inputs:
+        azureSubscription: '$(AzureConnectionName)'
+        ScriptType: 'FilePath'
+        ScriptPath: '$(Build.SourcesDirectory)/Set-CustomScriptExtention.ps1'
+        ScriptArguments: '-resourceGroupName $(resourceGroupName) -agentFileName $(agentFileName) -organizationName $(organizationName) -pat $(PAT) -pool $(pool)'
+        azurePowerShellVersion: 'LatestVersion'
