@@ -6,7 +6,7 @@ variables:
   pool: 'AgentPool01'
   agentCount: 2
   storageAccount: 'uniquestorageaccountname' #This needs to be globally unique
-  agentFileName: 'vsts-agent-win-x64-2.155.1' #Change this if a new version is available. This should be the same name as the file in Installationfiles
+  agentFileName: 'vsts-agent-win-x64-2.155.1' #Change this if a new version is available.
   adminUsername: 'AgentAdmin'
 
 trigger:
@@ -50,6 +50,7 @@ stages:
         azureSubscription: '$(AzureConnectionName)'
         action: 'Delete'
         resourceGroupName: '$(resourceGroupName)'
+      enabled: false
     - task: AzureResourceGroupDeployment@2
       displayName: Create new Azure Resources
       inputs:
